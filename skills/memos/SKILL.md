@@ -1,9 +1,9 @@
 ---
 name: memos
-description: Manage memos notes via the memos-cli binary (chawza/memos-cli). Use when you need to create, list, search, update, or delete notes in a self-hosted Memos instance. Supports tagging, visibility controls, and task-style memos. Trigger whenever the user wants to log a note, create a task, set a reminder, or search their Memos notes.
+description: Manage memos notes via the memos-cli binary (chawza/memos-cli). Use when you need to create, list, search, update, or delete notes in a self-hosted Memos instance. Supports tagging, visibility controls, state filtering, and task-style memos. Trigger whenever the user wants to log a note, create a task, set a reminder, or search their Memos notes.
 metadata:
   author: chawza
-  version: "1.0.0"
+  version: "0.3.0"
   tags: [notes, tasks, memos, cli, self-hosted]
 ---
 
@@ -16,35 +16,49 @@ A skill for interacting with [Memos](https://www.usememos.com/) — a self-hoste
 ### 1. Install memos-cli
 
 ```bash
-# Linux (amd64)
-curl -sL https://github.com/chawza/memos-cli/releases/latest/download/memos-cli_linux_amd64.tar.gz | tar xz -C ~/.local/bin memos
-
-# macOS (Apple Silicon)
-curl -sL https://github.com/chawza/memos-cli/releases/latest/download/memos-cli_darwin_arm64.tar.gz | tar xz -C ~/.local/bin memos
+go install github.com/chawza/memos-cli@latest
 
 # Verify
 memos --help
 ```
 
-### 2. Get your Memos access token
+Or build from source:
 
-1. Open your Memos instance in a browser
-2. Go to **Settings → Access Tokens**
-3. Create a new token and copy it
+```bash
+git clone https://github.com/chawza/memos-cli.git
+cd memos-cli
+go build -o memos .
+```
 
-### 3. Configure
+### 2. Configure
 
-Set your instance URL and token as environment variables:
+**Recommended:** Use the `auth` command to save credentials:
+
+```bash
+memos auth set --base-url https://your-memos.example.com --token memos_pat_xxx
+memos auth check  # verify connectivity
+```
+
+This saves credentials to `~/.config/memos-cli/config.toml`.
+
+**Alternative:** Set environment variables:
 
 ```bash
 export MEMOS_BASE_URL="https://your-memos.example.com"
 export MEMOS_TOKEN="memos_pat_xxx"
 ```
 
-Or use CLI flags on every command:
+**Alternative:** Use CLI flags on every command:
+
 ```bash
 memos --base-url https://your-memos.example.com --token xxx list
 ```
+
+### 3. Get your Memos access token
+
+1. Open your Memos instance in a browser
+2. Go to **Settings → Access Tokens**
+3. Create a new token and copy it
 
 ## Usage
 
@@ -52,12 +66,12 @@ memos --base-url https://your-memos.example.com --token xxx list
 
 - **Always use `#tags`** in memo content so users can filter by tag in the Memos dashboard. Multiple tags are supported.
 - **Default visibility is PRIVATE**. Only use PROTECTED or PUBLIC if the user explicitly requests it.
-- **Memo IDs are the `name` field** returned by the API (e.g. `memos/PbfqhaH6nc7oJdoqAW6pMr`) — not numeric IDs.
+- **Memo IDs are numeric** (e.g. `123`) — use them directly without the `memos/` prefix for `get`, `update`, and `delete` operations.
 
 ### Create a memo
 
 ```bash
-memos create --content "Buy groceries #shopping #urgent"
+memos create -c "Buy groceries #shopping #urgent"
 memos create -c "Finish quarterly report #work #mcm" --visibility PRIVATE
 memos create -c "MCM quarterly report #work #mcm #quarterly" --pinned
 ```
@@ -65,39 +79,37 @@ memos create -c "MCM quarterly report #work #mcm #quarterly" --pinned
 ### List memos
 
 ```bash
-memos list --limit 20
+memos list
+memos list --limit 50
+memos list --state ARCHIVED
 memos list --output json
-memos list --filter 'visibility == "PRIVATE"'  # AIP-160 filter syntax
+memos list --output table
+memos list --filter 'visibility == "PRIVATE"'  # CEL filter syntax
 ```
-
-### Search memos
-
-```bash
-memos search "quarterly report"
-memos search "mcm" --limit 10
-```
-Note: search is client-side — fetches memos then filters by keyword.
 
 ### Get a memo
 
 ```bash
-memos get "memos/PbfqhaH6nc7oJdoqAW6pMr"
-memos get "memos/PbfqhaH6nc7oJdoqAW6pMr" --output json
+memos get 123
+memos get 123 --output json
 ```
 
 ### Update a memo
 
 ```bash
-memos update "memos/PbfqhaH6nc7oJdoqAW6pMr" --content "Updated content"
-memos update "memos/PbfqhaH6nc7oJdoqAW6pMr" --pinned
-memos update "memos/PbfqhaH6nc7oJdoqAW6pMr" --unpin
-memos update "memos/PbfqhaH6nc7oJdoqAW6pMr" --visibility PUBLIC
+memos update 123 -c "Updated content"
+memos update 123 --pinned
+memos update 123 --unpin
+memos update 123 --visibility PUBLIC
+memos update 123 --state ARCHIVED
 ```
+
+Note: At least one flag must be specified for update.
 
 ### Delete a memo
 
 ```bash
-memos delete "memos/PbfqhaH6nc7oJdoqAW6pMr"
+memos delete 123
 ```
 
 ## Visibility Options
@@ -117,25 +129,66 @@ memos create -c "Weekly review #work #weekly #review"
 memos create -c "Grocery list #shopping #home"
 ```
 
-## Memo ID Format
+## Output Formats
 
-When you create a memo, the output shows the memo ID:
+The `list` and `get` commands support three output formats:
+
+| Format | Flag | Description |
+|--------|------|-------------|
+| Text | `--output text` (default) | Human-readable, compact |
+| JSON | `--output json` | Machine-readable, full memo struct |
+| Table | `--output table` | Aligned columns (list only) |
+
+### Text output examples
+
+**`memos get 123`:**
+
 ```
-Created memo memos/n7yGJoHpmJDkvZJjzihdRX
+Name:       memos/123
+State:      NORMAL
+Visibility: PRIVATE
+Pinned:     false
+Creator:    users/1
+Created:    2025-04-18T10:30:00Z
+
+Buy groceries
 ```
 
-Use the full `memos/xxx` string — not a numeric ID — for `get`, `update`, and `delete` operations.
+**`memos list`:**
 
-## API Reference
+```
+  [PRIVATE] Buy groceries
+* [PUBLIC]  Important announcement
+  [PRIVATE] Meeting notes
+```
 
-The skill wraps the [Memos API v1](https://www.usememos.com/docs/api/latest):
-- Base: `https://your-memos.com/api/v1`
-- Auth: `Bearer <token>`
-- Filter: [AIP-160](https://google.aip.dev/160) syntax
-- Pagination: `pageSize` + `pageToken`
+Pinned memos show `* ` prefix, non-pinned show `  `.
 
-## Future Extensions
+## Command Reference
 
-- MCP server mode for AI agent-native tool access
-- Bulk import/export
-- Webhook-driven watch mode
+| Command | Description |
+|---------|-------------|
+| `memos auth set` | Save credentials to config file |
+| `memos auth check` | Verify saved configuration |
+| `memos create` | Create a new memo |
+| `memos list` | List memos with filters |
+| `memos get <id>` | Get a single memo |
+| `memos update <id>` | Update a memo |
+| `memos delete <id>` | Delete a memo |
+
+## Configuration
+
+Three methods, checked in priority order:
+
+1. **Flags** — `--base-url` and `--token` on any command
+2. **Environment variables** — `MEMOS_BASE_URL` and `MEMOS_TOKEN`
+3. **Config file** — `~/.config/memos-cli/config.toml`
+
+Config file format (TOML):
+
+```toml
+base_url = "https://your-memos.example.com"
+token = "memos_pat_xxx"
+timeout = 30
+tls_skip_verify = false
+```
