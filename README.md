@@ -1,4 +1,4 @@
-# hermes-skill-memos
+# memos-skills
 
 A shareable [Hermes Agent](https://github.com/chawza/hermes-agent) skill for managing [Memos](https://www.usememos.com/) notes via the [memos-cli](https://github.com/chawza/memos-cli) binary.
 
